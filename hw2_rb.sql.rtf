@@ -1,0 +1,871 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2761
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 Menlo-Regular;\f1\fnil\fcharset0 Menlo-Bold;\f2\fnil\fcharset0 Menlo-Italic;
+}
+{\colortbl;\red255\green255\blue255;\red128\green128\blue128;\red128\green0\blue0;\red142\green0\blue198;
+\red0\green0\blue128;\red0\green100\blue100;\red0\green0\blue255;\red255\green0\blue0;\red108\green81\blue81;
+\red0\green128\blue0;}
+{\*\expandedcolortbl;;\csgenericrgb\c50196\c50196\c50196;\csgenericrgb\c50196\c0\c0;\csgenericrgb\c55686\c0\c77647;
+\csgenericrgb\c0\c0\c50196;\csgenericrgb\c0\c39216\c39216;\csgenericrgb\c0\c0\c100000;\csgenericrgb\c100000\c0\c0;\csgenericrgb\c42353\c31765\c31765;
+\csgenericrgb\c0\c50196\c0;}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\deftab720
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs24 \cf2 /*\cf0 \
+\cf2 The homework this week will be using the devices and events dataset\cf0 \
+\
+\cf2 Construct the following eight queries:\cf0 \
+\
+\cf2 A query to deduplicate game_details from Day 1 so there's no duplicates\cf0 \
+\
+\cf2 A DDL for an user_devices_cumulated table that has:\cf0 \
+\
+\cf2 a device_activity_datelist which tracks a users active days by browser_type\cf0 \
+\cf2 data type here should look similar to MAP<STRING, ARRAY[DATE]>\cf0 \
+\cf2 or you could have browser_type as a column with multiple rows for each user (either way works, just be consistent!)\cf0 \
+\cf2 A cumulative query to generate device_activity_datelist from events\cf0 \
+\
+\cf2 A datelist_int generation query. Convert the device_activity_datelist column into a datelist_int column\cf0 \
+\
+\cf2 A DDL for hosts_cumulated table\cf0 \
+\
+\cf2 a host_activity_datelist which logs to see which dates each host is experiencing any activity\cf0 \
+\cf2 The incremental query to generate host_activity_datelist\cf0 \
+\
+\cf2 A monthly, reduced fact table DDL host_activity_reduced\cf0 \
+\
+\cf2 month\cf0 \
+\cf2 host\cf0 \
+\cf2 hit_array - think COUNT(1)\cf0 \
+\cf2 unique_visitors array - think COUNT(DISTINCT user_id)\cf0 \
+\cf2 An incremental query that loads host_activity_reduced\cf0 \
+\
+\cf2 day-by-day\cf0 \
+\cf2 */\cf0 \
+\
+\cf2 -- A query to deduplicate game_details from Day 1 so there's no duplicates\cf0 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf3 WITH
+\f0\b0 \cf0  
+\f2\i \cf4 dedup
+\f0\i0 \cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0 \
+        
+\f2\i \cf4 gd
+\f0\i0 \cf0 .*,\
+        
+\f1\b \cf5 ROW_NUMBER
+\f0\b0 \cf0 () 
+\f1\b \cf3 OVER
+\f0\b0 \cf0 (
+\f1\b \cf3 PARTITION
+\f0\b0 \cf0  
+\f1\b \cf3 BY
+\f0\b0 \cf0  
+\f2\i \cf4 gd
+\f0\i0 \cf0 .\cf6 game_id\cf0 , 
+\f2\i \cf4 gd
+\f0\i0 \cf0 .\cf6 team_id\cf0 , 
+\f2\i \cf4 gd
+\f0\i0 \cf0 .\cf6 player_id\cf0  
+\f1\b \cf3 ORDER
+\f0\b0 \cf0  
+\f1\b \cf3 BY
+\f0\b0 \cf0  
+\f2\i \cf4 gd
+\f0\i0 \cf0 .\cf6 player_id\cf0 ) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f2\i \cf6 row_num
+\f0\i0 \cf0 \
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  \cf4 game_details\cf0  
+\f2\i \cf4 gd
+\f0\i0 \cf0 \
+)\
+
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  *\
+
+\f1\b \cf3 FROM
+\f0\b0 \cf0  
+\f2\i \cf4 dedup
+\f0\i0 \cf0 \
+
+\f1\b \cf3 WHERE
+\f0\b0 \cf0  
+\f2\i \cf6 row_num
+\f0\i0 \cf0  = \cf7 1\cf8 ;\cf0  \cf2 -- Keep only one row per game_id, team_id, player_id\cf0 \
+\
+\
+-\cf2 /* A DDL for an user_devices_cumulated table that has \cf0 \
+\pard\pardeftab720\partightenfactor0
+\cf2 	-a device_activity_datelist which tracks a users active days by browser_type\cf0 \
+\cf2 	-data type here should look similar to MAP<STRING, ARRAY[DATE]>\cf0 \
+\cf2 or you could have browser_type as a column with multiple rows for each user (either way works, just be consistent!)\cf0 \
+\cf2 A cumulative query to generate device_activity_datelist from events\cf0 \
+\cf2 */\cf0 \
+\
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf3 CREATE
+\f0\b0 \cf0  
+\f1\b \cf3 TABLE
+\f0\b0 \cf0  \cf4 user_devices_cumulated\cf0  (\
+    \cf6 device_id\cf0  
+\f1\b \cf5 BIGINT
+\f0\b0 \cf0 ,\
+    \cf6 browser_type\cf0  
+\f1\b \cf5 TEXT
+\f0\b0 \cf0 ,\
+    \cf6 device_activity_datelist\cf0  
+\f1\b \cf5 DATE
+\f0\b0 \cf0 [],\
+    \cf6 date\cf0  
+\f1\b \cf5 DATE
+\f0\b0 \cf0 ,\
+    
+\f1\b \cf3 PRIMARY
+\f0\b0 \cf0  
+\f1\b \cf3 KEY
+\f0\b0 \cf0  (\cf6 device_id\cf0 , \cf6 browser_type\cf0 , \cf6 date\cf0 )\
+)\cf8 ;\cf0 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 --A cumulative query to generate device_activity_datelist from events\cf0 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf3 INSERT
+\f0\b0 \cf0  
+\f1\b \cf3 INTO
+\f0\b0 \cf0  \cf9 \ul \ulc9 user_devices_cumulated\cf0 \ulnone  (device_id, browser_type, device_activity_datelist, 
+\f1\b \cf3 date
+\f0\b0 \cf0 )\
+
+\f1\b \cf3 WITH
+\f0\b0 \cf0  yesterday 
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+        device_id, \
+        browser_type, \
+        device_activity_datelist, \
+        
+\f1\b \cf5 date
+\f0\b0 \cf0 \
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  user_devices_cumulated\
+    
+\f1\b \cf3 WHERE
+\f0\b0 \cf0  
+\f1\b \cf5 date
+\f0\b0 \cf0  = 
+\f1\b \cf5 DATE
+\f0\b0 \cf0  \cf10 '2023-01-29'\cf0 \
+), \
+today 
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+        
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (device_id 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 BIGINT
+\f0\b0 \cf0 ) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  device_id, \cf2 -- Ensure device_id is valid\cf0 \
+        \cf10 'unknown'\cf0 ::
+\f1\b \cf5 TEXT
+\f0\b0 \cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  browser_type, \cf2 -- Default or derived value for browser_type\cf0 \
+        
+\f1\b \cf5 ARRAY_AGG
+\f0\b0 \cf0 (
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (event_time 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 DATE
+\f0\b0 \cf0 )) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  today_activity,\
+        
+\f1\b \cf5 DATE
+\f0\b0 \cf0  \cf10 '2023-01-30'\cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  date_active\
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  events\
+    
+\f1\b \cf3 WHERE
+\f0\b0 \cf0  
+\f1\b \cf5 DATE
+\f0\b0 \cf0 (event_time) = 
+\f1\b \cf5 DATE
+\f0\b0 \cf0  \cf10 '2023-01-30'\cf0 \
+    
+\f1\b \cf3 AND
+\f0\b0 \cf0  device_id 
+\f1\b \cf3 IS
+\f0\b0 \cf0  
+\f1\b \cf3 NOT
+\f0\b0 \cf0  
+\f1\b \cf3 NULL
+\f0\b0 \cf0  
+\f1\b \cf3 AND
+\f0\b0 \cf0  \
+          device_id::
+\f1\b \cf5 NUMERIC
+\f0\b0 \cf0  <= \cf7 9223372036854775807\cf0  
+\f1\b \cf3 AND
+\f0\b0 \cf0  \
+          device_id::
+\f1\b \cf5 NUMERIC
+\f0\b0 \cf0  >= -\cf7 9223372036854775808\cf0 \
+    
+\f1\b \cf3 GROUP
+\f0\b0 \cf0  
+\f1\b \cf3 BY
+\f0\b0 \cf0  device_id\
+)\
+
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+    
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (t.device_id, y.device_id) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  device_id,\
+    
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (t.browser_type, y.browser_type, \cf10 'unknown'\cf0 ) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  browser_type,\
+    
+\f1\b \cf5 ARRAY_CAT
+\f0\b0 \cf0 (\
+        
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (t.today_activity, 
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 []::
+\f1\b \cf5 date
+\f0\b0 \cf0 []),\
+        
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (y.device_activity_datelist, 
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 []::
+\f1\b \cf5 date
+\f0\b0 \cf0 [])\
+    ) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  device_activity_datelist,\
+    
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (t.date_active::
+\f1\b \cf5 date
+\f0\b0 \cf0 , (y.
+\f1\b \cf5 date
+\f0\b0 \cf0  + 
+\f1\b \cf5 INTERVAL
+\f0\b0 \cf0  \cf10 '1 day'\cf0 )::
+\f1\b \cf5 date
+\f0\b0 \cf0 ) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 date
+\f0\b0 \cf0 \
+
+\f1\b \cf3 FROM
+\f0\b0 \cf0  today t\
+
+\f1\b \cf3 FULL
+\f0\b0 \cf0  
+\f1\b \cf3 OUTER
+\f0\b0 \cf0  
+\f1\b \cf3 JOIN
+\f0\b0 \cf0  yesterday y\
+
+\f1\b \cf3 ON
+\f0\b0 \cf0  t.device_id = y.device_id\cf8 ;\cf0 \
+\
+\
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 --A datelist_int generation query. Convert the device_activity_datelist column into a datelist_int column\cf0 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf3 ALTER
+\f0\b0 \cf0  
+\f1\b \cf3 TABLE
+\f0\b0 \cf0  \cf9 \ul \ulc9 user_devices_cumulated\cf0 \ulnone  
+\f1\b \cf3 ADD
+\f0\b0 \cf0  
+\f1\b \cf3 COLUMN
+\f0\b0 \cf0  \cf6 datelist_int\cf0  
+\f1\b \cf5 BIGINT
+\f0\b0 \cf8 ;\cf0 \
+\
+
+\f1\b \cf3 UPDATE
+\f0\b0 \cf0  \cf9 \ul \ulc9 user_devices_cumulated\cf0 \ulnone \
+\pard\pardeftab720\partightenfactor0
+
+\f2\i \cf4 SET
+\f0\i0 \cf0  datelist_int = (\
+    
+\f1\b \cf3 WITH
+\f0\b0 \cf0  series 
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+        
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+            
+\f1\b \cf5 generate_series
+\f0\b0 \cf0 (
+\f1\b \cf5 DATE
+\f0\b0 \cf0  \cf10 '2023-01-01'\cf0 , 
+\f1\b \cf5 DATE
+\f0\b0 \cf0  \cf10 '2023-01-31'\cf0 , 
+\f1\b \cf5 INTERVAL
+\f0\b0 \cf0  \cf10 '1 day'\cf0 )::
+\f1\b \cf5 DATE
+\f0\b0 \cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  series_date,\
+            
+\f1\b \cf5 ROW_NUMBER
+\f0\b0 \cf0 () 
+\f1\b \cf3 OVER
+\f0\b0 \cf0  (
+\f1\b \cf3 ORDER
+\f0\b0 \cf0  
+\f1\b \cf3 BY
+\f0\b0 \cf0  
+\f1\b \cf5 generate_series
+\f0\b0 \cf0 (
+\f1\b \cf5 DATE
+\f0\b0 \cf0  \cf10 '2023-01-01'\cf0 , 
+\f1\b \cf5 DATE
+\f0\b0 \cf0  \cf10 '2023-01-31'\cf0 , 
+\f1\b \cf5 INTERVAL
+\f0\b0 \cf0  \cf10 '1 day'\cf0 )) - \cf7 1\cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  bit_position\
+    )\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  
+\f1\b \cf5 SUM
+\f0\b0 \cf0 (\
+        
+\f1\b \cf3 CASE
+\f0\b0 \cf0  \
+            
+\f1\b \cf3 WHEN
+\f0\b0 \cf0  device_activity_datelist @> 
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 [series.series_date] 
+\f1\b \cf3 THEN
+\f0\b0 \cf0  \
+                
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (POW(\cf7 2\cf0 , bit_position) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 BIGINT
+\f0\b0 \cf0 )\
+            
+\f1\b \cf3 ELSE
+\f0\b0 \cf0  \
+                \cf7 0\cf0 \
+        
+\f1\b \cf3 END
+\f0\b0 \cf0 \
+    )\
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  series\
+    
+\f1\b \cf3 WHERE
+\f0\b0 \cf0  user_devices_cumulated.device_id = user_devices_cumulated.device_id\
+)\cf8 ;\cf0 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 --A DDL for hosts_cumulated table a host_activity_datelist which logs to see which dates each host is experiencing any activity\cf0 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf3 \ul \ulc3 CREATE
+\f0\b0 \cf0 \ulc0  
+\f1\b \cf3 \ulc3 TABLE
+\f0\b0 \cf0 \ulc0  \cf4 \ulc4 hosts_cumulated\cf0 \ulc0  (\ulnone \
+\pard\pardeftab720\partightenfactor0
+\cf0 \ul \ulc0     \cf6 \ulc6 host_id\cf0 \ulc0  
+\f1\b \cf5 \ulc5 BIGINT
+\f0\b0 \cf0 \ulc0  
+\f1\b \cf3 \ulc3 NOT
+\f0\b0 \cf0 \ulc0  
+\f1\b \cf3 \ulc3 NULL
+\f0\b0 \cf0 \ulc0 , \cf2 \ulc2 -- Unique identifier for the host\cf0 \ulnone \
+\ul     \cf6 \ulc6 host_activity_datelist\cf0 \ulc0  
+\f1\b \cf5 \ulc5 DATE
+\f0\b0 \cf0 \ulc0 [] 
+\f1\b \cf3 \ulc3 NOT
+\f0\b0 \cf0 \ulc0  
+\f1\b \cf3 \ulc3 NULL
+\f0\b0 \cf0 \ulc0 , \cf2 \ulc2 -- Array of dates representing activity for the host\cf0 \ulnone \
+\ul     \cf6 \ulc6 last_updated\cf0 \ulc0  
+\f1\b \cf5 \ulc5 DATE
+\f0\b0 \cf0 \ulc0  
+\f1\b \cf3 \ulc3 NOT
+\f0\b0 \cf0 \ulc0  
+\f1\b \cf3 \ulc3 NULL
+\f0\b0 \cf0 \ulc0  
+\f1\b \cf3 \ulc3 DEFAULT
+\f0\b0 \cf0 \ulc0  CURRENT_DATE, \cf2 \ulc2 -- The date when the row was last updated\cf0 \ulnone \
+\ul     
+\f1\b \cf3 \ulc3 PRIMARY
+\f0\b0 \cf0 \ulc0  
+\f1\b \cf3 \ulc3 KEY
+\f0\b0 \cf0 \ulc0  (\cf6 \ulc6 host_id\cf0 \ulc0 ) \cf2 \ulc2 -- Unique constraint on host_id\cf0 \ulnone \
+\ul )\cf8 \ulc8 ;\cf0 \ulnone \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 --incremental query to generate host_activity_datelist\cf0 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf3 WITH
+\f0\b0 \cf0  
+\f2\i \cf4 new_activity
+\f0\i0 \cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+        
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (\cf6 host\cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 BIGINT
+\f0\b0 \cf0 ) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f2\i \cf6 host_id
+\f0\i0 \cf0 , \cf2 -- Explicitly cast `host` to `BIGINT`\cf0 \
+        
+\f1\b \cf5 ARRAY_AGG
+\f0\b0 \cf0 (
+\f1\b \cf3 DISTINCT
+\f0\b0 \cf0  
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (\cf6 event_time\cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 DATE
+\f0\b0 \cf0 )) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f2\i \cf6 new_dates
+\f0\i0 \cf0 \
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  \cf4 events\cf0 \
+    
+\f1\b \cf3 WHERE
+\f0\b0 \cf0  \cf6 host\cf0  
+\f1\b \cf3 IS
+\f0\b0 \cf0  
+\f1\b \cf3 NOT
+\f0\b0 \cf0  
+\f1\b \cf3 NULL
+\f0\b0 \cf0 \
+    
+\f1\b \cf3 GROUP
+\f0\b0 \cf0  
+\f1\b \cf3 BY
+\f0\b0 \cf0  \cf6 host\cf0 \
+),\
+\pard\pardeftab720\partightenfactor0
+
+\f2\i \cf4 updated_activity
+\f0\i0 \cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+        h.host_id,\
+        
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 (
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  
+\f1\b \cf3 DISTINCT
+\f0\b0 \cf0  
+\f1\b \cf5 unnest
+\f0\b0 \cf0 (
+\f1\b \cf5 ARRAY_CAT
+\f0\b0 \cf0 (\
+            
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (h.host_activity_datelist, 
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 []::
+\f1\b \cf5 DATE
+\f0\b0 \cf0 []),\
+            
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (n.new_dates, 
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 []::
+\f1\b \cf5 DATE
+\f0\b0 \cf0 [])\
+        ))) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  updated_datelist\
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  hosts_cumulated h\
+    
+\f1\b \cf3 LEFT
+\f0\b0 \cf0  
+\f1\b \cf3 JOIN
+\f0\b0 \cf0  new_activity n 
+\f1\b \cf3 ON
+\f0\b0 \cf0  h.host_id = n.host_id\
+)\
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf3 UPDATE
+\f0\b0 \cf0  hosts_cumulated\
+
+\f1\b \cf3 SET
+\f0\b0 \cf0  host_activity_datelist = u.updated_datelist,\
+    last_updated = CURRENT_DATE\
+
+\f1\b \cf3 FROM
+\f0\b0 \cf0  updated_activity u\
+
+\f1\b \cf3 WHERE
+\f0\b0 \cf0  hosts_cumulated.host_id = u.host_id\cf8 ;\cf0 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 /* A monthly, reduced fact table DDL host_activity_reduced\cf0 \
+\cf2 month\cf0 \
+\cf2 host\cf0 \
+\cf2 hit_array - think COUNT(1)\cf0 \
+\cf2 unique_visitors array - think COUNT(DISTINCT user_id)\cf0 \
+\cf2 */\cf0 \
+\
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf3 CREATE
+\f0\b0 \cf0  
+\f1\b \cf3 TABLE
+\f0\b0 \cf0  \cf4 host_activity_reduced\cf0  (\
+    \cf6 month\cf0  
+\f1\b \cf5 DATE
+\f0\b0 \cf0  
+\f1\b \cf3 NOT
+\f0\b0 \cf0  
+\f1\b \cf3 NULL
+\f0\b0 \cf0 , \cf2 -- The first day of the month (e.g., 2023-01-01 for January 2023)\cf0 \
+    \cf6 host_id\cf0  
+\f1\b \cf5 BIGINT
+\f0\b0 \cf0  
+\f1\b \cf3 NOT
+\f0\b0 \cf0  
+\f1\b \cf3 NULL
+\f0\b0 \cf0 , \cf2 -- The unique identifier for the host\cf0 \
+    \cf6 hit_array\cf0  
+\f1\b \cf5 INT
+\f0\b0 \cf0 [] 
+\f1\b \cf3 NOT
+\f0\b0 \cf0  
+\f1\b \cf3 NULL
+\f0\b0 \cf0 , \cf2 -- Array of daily counts of hits for the host in the month\cf0 \
+    \cf6 unique_visitors_array\cf0  
+\f1\b \cf5 INT
+\f0\b0 \cf0 [] 
+\f1\b \cf3 NOT
+\f0\b0 \cf0  
+\f1\b \cf3 NULL
+\f0\b0 \cf0 , \cf2 -- Array of daily counts of unique visitors for the host in the month\cf0 \
+    
+\f1\b \cf3 PRIMARY
+\f0\b0 \cf0  
+\f1\b \cf3 KEY
+\f0\b0 \cf0  (\cf6 month\cf0 , \cf6 host_id\cf0 ) \cf2 -- Ensure uniqueness of month-host pairs\cf0 \
+)\cf8 ;\cf0 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 --An incremental query that loads host_activity_reduced day-by-day\cf0 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf3 WITH
+\f0\b0 \cf0  daily_activity 
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+        
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (
+\f1\b \cf5 host
+\f0\b0 \cf0  
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 BIGINT
+\f0\b0 \cf0 ) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  host_id, \cf2 -- Explicitly cast host to BIGINT\cf0 \
+        
+\f1\b \cf5 DATE_TRUNC
+\f0\b0 \cf0 (\cf10 'day'\cf0 , 
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (event_time 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 TIMESTAMP
+\f0\b0 \cf0 )) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  activity_date, \cf2 -- Cast event_time to TIMESTAMP\cf0 \
+        
+\f1\b \cf5 COUNT
+\f0\b0 \cf0 (\cf7 1\cf0 ) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  hits,\
+        
+\f1\b \cf5 COUNT
+\f0\b0 \cf0 (
+\f1\b \cf3 DISTINCT
+\f0\b0 \cf0  user_id) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  unique_visitors\
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  events\
+    
+\f1\b \cf3 WHERE
+\f0\b0 \cf0  
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (event_time 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 TIMESTAMP
+\f0\b0 \cf0 ) >= CURRENT_DATE - 
+\f1\b \cf5 INTERVAL
+\f0\b0 \cf0  \cf10 '1 day'\cf0  \
+      
+\f1\b \cf3 AND
+\f0\b0 \cf0  
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (event_time 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 TIMESTAMP
+\f0\b0 \cf0 ) < CURRENT_DATE\
+    
+\f1\b \cf3 GROUP
+\f0\b0 \cf0  
+\f1\b \cf3 BY
+\f0\b0 \cf0  
+\f1\b \cf5 host
+\f0\b0 \cf0 , 
+\f1\b \cf5 DATE_TRUNC
+\f0\b0 \cf0 (\cf10 'day'\cf0 , 
+\f1\b \cf5 CAST
+\f0\b0 \cf0 (event_time 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf5 TIMESTAMP
+\f0\b0 \cf0 ))\
+), existing_data 
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+        host_id,\
+        
+\f1\b \cf3 month
+\f0\b0 \cf0 ,\
+        hit_array,\
+        unique_visitors_array\
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  host_activity_reduced\
+    
+\f1\b \cf3 WHERE
+\f0\b0 \cf0  
+\f1\b \cf3 month
+\f0\b0 \cf0  = 
+\f1\b \cf5 DATE_TRUNC
+\f0\b0 \cf0 (\cf10 'month'\cf0 , CURRENT_DATE - 
+\f1\b \cf5 INTERVAL
+\f0\b0 \cf0  \cf10 '1 day'\cf0 )\
+), new_data 
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+        
+\f1\b \cf5 DATE_TRUNC
+\f0\b0 \cf0 (\cf10 'month'\cf0 , activity_date) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf3 month
+\f0\b0 \cf0 ,\
+        host_id,\
+        
+\f1\b \cf5 ARRAY_AGG
+\f0\b0 \cf0 (hits) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  daily_hits,\
+        
+\f1\b \cf5 ARRAY_AGG
+\f0\b0 \cf0 (unique_visitors) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  daily_visitors\
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  daily_activity\
+    
+\f1\b \cf3 GROUP
+\f0\b0 \cf0  
+\f1\b \cf3 BY
+\f0\b0 \cf0  host_id, 
+\f1\b \cf5 DATE_TRUNC
+\f0\b0 \cf0 (\cf10 'month'\cf0 , activity_date)\
+), updated_data 
+\f1\b \cf3 AS
+\f0\b0 \cf0  (\
+    
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+        
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (e.
+\f1\b \cf3 month
+\f0\b0 \cf0 , n.
+\f1\b \cf3 month
+\f0\b0 \cf0 ) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  
+\f1\b \cf3 month
+\f0\b0 \cf0 ,\
+        
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (e.host_id, n.host_id) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  host_id,\
+        
+\f1\b \cf5 ARRAY_CAT
+\f0\b0 \cf0 (
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (e.hit_array, 
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 []::
+\f1\b \cf5 INT
+\f0\b0 \cf0 []), 
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (n.daily_hits, 
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 []::
+\f1\b \cf5 INT
+\f0\b0 \cf0 [])) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  updated_hit_array,\
+        
+\f1\b \cf5 ARRAY_CAT
+\f0\b0 \cf0 (
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (e.unique_visitors_array, 
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 []::
+\f1\b \cf5 INT
+\f0\b0 \cf0 []), 
+\f1\b \cf5 COALESCE
+\f0\b0 \cf0 (n.daily_visitors, 
+\f1\b \cf3 ARRAY
+\f0\b0 \cf0 []::
+\f1\b \cf5 INT
+\f0\b0 \cf0 [])) 
+\f1\b \cf3 AS
+\f0\b0 \cf0  updated_unique_visitors_array\
+    
+\f1\b \cf3 FROM
+\f0\b0 \cf0  existing_data e\
+    
+\f1\b \cf3 FULL
+\f0\b0 \cf0  
+\f1\b \cf3 OUTER
+\f0\b0 \cf0  
+\f1\b \cf3 JOIN
+\f0\b0 \cf0  new_data n 
+\f1\b \cf3 ON
+\f0\b0 \cf0  e.host_id = n.host_id 
+\f1\b \cf3 AND
+\f0\b0 \cf0  e.
+\f1\b \cf3 month
+\f0\b0 \cf0  = n.
+\f1\b \cf3 month
+\f0\b0 \cf0 \
+)\
+
+\f1\b \cf3 INSERT
+\f0\b0 \cf0  
+\f1\b \cf3 INTO
+\f0\b0 \cf0  host_activity_reduced (
+\f1\b \cf3 month
+\f0\b0 \cf0 , host_id, hit_array, unique_visitors_array)\
+
+\f1\b \cf3 SELECT
+\f0\b0 \cf0  \
+    
+\f1\b \cf3 month
+\f0\b0 \cf0 ,\
+    host_id,\
+    updated_hit_array,\
+    updated_unique_visitors_array\
+
+\f1\b \cf3 FROM
+\f0\b0 \cf0  updated_data\
+
+\f1\b \cf3 ON
+\f0\b0 \cf0  
+\f1\b \cf3 CONFLICT
+\f0\b0 \cf0  (
+\f1\b \cf3 month
+\f0\b0 \cf0 , host_id) \
+
+\f1\b \cf3 DO
+\f0\b0 \cf0  
+\f1\b \cf3 UPDATE
+\f0\b0 \cf0  
+\f1\b \cf3 SET
+\f0\b0 \cf0  \
+    hit_array = EXCLUDED.hit_array,\
+    unique_visitors_array = EXCLUDED.unique_visitors_array\cf8 ;\cf0 \
+}
